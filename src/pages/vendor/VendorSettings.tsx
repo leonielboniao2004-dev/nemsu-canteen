@@ -9,47 +9,20 @@ import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { notificationsStore } from "@/lib/notifications";
 import { useOrders } from "@/lib/orders";
-
-const KEY = "canteen.vendor.settings";
-
-type VendorSettings = {
-  canteenName: string;
-  contactEmail: string;
-  phone: string;
-  hoursOpen: string;
-  hoursClose: string;
-  acceptingOrders: boolean;
-  notifyNewOrder: boolean;
-  notifyLowStock: boolean;
-};
-
-const defaults: VendorSettings = {
-  canteenName: "School Canteen",
-  contactEmail: "canteen@school.edu",
-  phone: "0917 555 0101",
-  hoursOpen: "07:00",
-  hoursClose: "16:00",
-  acceptingOrders: true,
-  notifyNewOrder: true,
-  notifyLowStock: true,
-};
-
-const read = (): VendorSettings => {
-  if (typeof window === "undefined") return defaults;
-  try {
-    const raw = window.localStorage.getItem(KEY);
-    return raw ? { ...defaults, ...JSON.parse(raw) } : defaults;
-  } catch { return defaults; }
-};
+import {
+  readVendorSettings,
+  writeVendorSettings,
+  type VendorSettings as VendorSettingsType,
+} from "@/lib/vendorSettings";
 
 const VendorSettings = () => {
-  const [s, setS] = useState<VendorSettings>(read);
+  const [s, setS] = useState<VendorSettingsType>(readVendorSettings);
   const [announceTitle, setAnnounceTitle] = useState("");
   const [announceBody, setAnnounceBody] = useState("");
   const orders = useOrders();
 
   const save = () => {
-    if (typeof window !== "undefined") window.localStorage.setItem(KEY, JSON.stringify(s));
+    writeVendorSettings(s);
     toast.success("Settings saved");
   };
 
@@ -59,10 +32,7 @@ const VendorSettings = () => {
       return;
     }
     const recipients = new Set(orders.map((o) => o.studentEmail));
-    if (recipients.size === 0) {
-      toast.error("No customers to notify yet");
-      return;
-    }
+    // Always broadcast — even if no orders exist yet, send vendor-wide too.
     for (const email of recipients) {
       notificationsStore.push({
         audience: "customer",
@@ -73,7 +43,18 @@ const VendorSettings = () => {
         body: announceBody.trim(),
       });
     }
-    toast.success(`Sent to ${recipients.size} customer${recipients.size === 1 ? "" : "s"}`);
+    notificationsStore.push({
+      audience: "vendor",
+      type: "Announcement",
+      iconName: "Megaphone",
+      title: announceTitle.trim(),
+      body: announceBody.trim(),
+    });
+    toast.success(
+      recipients.size === 0
+        ? "Announcement saved"
+        : `Sent to ${recipients.size} customer${recipients.size === 1 ? "" : "s"}`,
+    );
     setAnnounceTitle("");
     setAnnounceBody("");
   };

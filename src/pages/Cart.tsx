@@ -11,6 +11,7 @@ import { peso } from "@/lib/menu";
 import { ordersStore } from "@/lib/orders";
 import { getSession } from "@/lib/auth";
 import { toast } from "sonner";
+import { useVendorSettings } from "@/lib/vendorSettings";
 
 const PICKUPS = ["10:00 AM", "10:30 AM", "12:00 PM", "12:30 PM", "1:00 PM", "3:00 PM"];
 
@@ -22,8 +23,14 @@ const Cart = () => {
   const [notes, setNotes] = useState("");
   const [placing, setPlacing] = useState(false);
   const navigate = useNavigate();
+  const vendorSettings = useVendorSettings();
+  const closed = !vendorSettings.acceptingOrders;
 
   const placeOrder = async () => {
+    if (closed) {
+      toast.error("Canteen is closed", { description: "Orders are not available right now." });
+      return;
+    }
     const session = getSession();
     if (!session || session.role !== "student" && session.role !== "teacher") {
       toast.error("Please sign in as a student");
@@ -49,6 +56,11 @@ const Cart = () => {
 
   return (
     <AppShell title="Your Cart" subtitle="Review and confirm your pre-order">
+      {closed && (
+        <div className="mb-4 rounded-2xl border border-destructive/30 bg-destructive/10 text-destructive p-4 text-sm font-semibold">
+          🚫 The canteen is closed. You can review your cart but cannot place an order.
+        </div>
+      )}
       {detailed.length === 0 ? (
         <div className="bg-card rounded-2xl p-12 text-center" style={{ boxShadow: "var(--shadow-card)" }}>
           <ShoppingBag className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
@@ -122,8 +134,8 @@ const Cart = () => {
               </div>
             </div>
 
-            <Button className="w-full mt-5 h-11" onClick={placeOrder} disabled={placing}>
-              {placing ? "Placing..." : `Place Order · ${peso(total)}`}
+            <Button className="w-full mt-5 h-11" onClick={placeOrder} disabled={placing || closed}>
+              {closed ? "Canteen closed" : placing ? "Placing..." : `Place Order · ${peso(total)}`}
             </Button>
             <p className="text-[11px] text-muted-foreground text-center mt-2">Pay at the counter on pickup.</p>
           </div>

@@ -9,6 +9,7 @@ import { peso, Category } from "@/lib/menu";
 import { cartStore, useCart, cartCount } from "@/lib/cart";
 import { useProducts, productsStore, type Product } from "@/lib/products";
 import { toast } from "sonner";
+import { useVendorSettings } from "@/lib/vendorSettings";
 
 const CATEGORIES: ("All" | Category)[] = ["All", "Meals", "Snacks", "Drinks", "Desserts"];
 
@@ -18,6 +19,8 @@ const Menu = () => {
   const cart = useCart();
   const count = cartCount(cart);
   const products = useProducts();
+  const vendorSettings = useVendorSettings();
+  const closed = !vendorSettings.acceptingOrders;
 
   const items = useMemo(() => {
     return products
@@ -29,6 +32,10 @@ const Menu = () => {
   }, [products, cat, q]);
 
   const add = (m: Product) => {
+    if (closed) {
+      toast.error("Canteen is closed", { description: "Items cannot be ordered right now." });
+      return;
+    }
     if (m.stock <= 0) {
       toast.error("Out of stock", { description: m.name });
       return;
@@ -52,6 +59,11 @@ const Menu = () => {
 
   return (
     <StudentSidebarLayout title="Today's Menu" subtitle="Pre-order and skip the line" toolbar={toolbar}>
+      {closed && (
+        <div className="mb-4 rounded-2xl border border-destructive/30 bg-destructive/10 text-destructive p-4 text-sm font-semibold">
+          🚫 The canteen is currently closed. Items are not available for ordering.
+        </div>
+      )}
       <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-6">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -90,7 +102,9 @@ const Menu = () => {
                 <h3 className="font-bold leading-tight">{m.name}</h3>
                 <p className="text-sm text-muted-foreground mt-1 flex-1">{m.description}</p>
                 <div className="flex items-center gap-2 mt-2">
-                  {out ? (
+                  {closed ? (
+                    <Badge className="bg-destructive/10 text-destructive border-0 rounded-md">Canteen closed</Badge>
+                  ) : out ? (
                     <Badge className="bg-destructive/10 text-destructive border-0 rounded-md">Out of stock</Badge>
                   ) : low ? (
                     <Badge className="bg-[hsl(var(--warning))]/15 text-[hsl(var(--warning))] border-0 rounded-md">Low — {m.stock} left</Badge>
@@ -100,7 +114,7 @@ const Menu = () => {
                 </div>
                 <div className="flex items-center justify-between mt-4">
                   <p className="text-lg font-bold text-primary">{peso(m.price)}</p>
-                  <Button size="sm" onClick={() => add(m)} className="gap-1.5" disabled={out}>
+                  <Button size="sm" onClick={() => add(m)} className="gap-1.5" disabled={out || closed}>
                     <Plus className="h-4 w-4" /> Add
                   </Button>
                 </div>

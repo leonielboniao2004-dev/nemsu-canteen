@@ -1,15 +1,23 @@
 import { useEffect, useState } from "react";
 import { MenuItem } from "./menu";
 import { productsStore } from "./products";
+import { getSession } from "./auth";
 
 export type CartItem = { id: string; qty: number };
-const KEY = "canteen.cart";
 const EVT = "canteen:cart-changed";
+
+const keyFor = () => {
+  const s = getSession();
+  if (s && (s.role === "student" || s.role === "teacher")) {
+    return `canteen.cart:${s.role}:${s.email.toLowerCase()}`;
+  }
+  return "canteen.cart:guest";
+};
 
 const read = (): CartItem[] => {
   if (typeof window === "undefined") return [];
   try {
-    const raw = window.localStorage.getItem(KEY);
+    const raw = window.localStorage.getItem(keyFor());
     return raw ? (JSON.parse(raw) as CartItem[]) : [];
   } catch {
     return [];
@@ -17,7 +25,7 @@ const read = (): CartItem[] => {
 };
 const write = (items: CartItem[]) => {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(KEY, JSON.stringify(items));
+  window.localStorage.setItem(keyFor(), JSON.stringify(items));
   window.dispatchEvent(new CustomEvent(EVT));
 };
 
