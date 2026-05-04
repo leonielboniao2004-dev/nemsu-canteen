@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
-import { setSession } from "@/lib/auth";
+import { signInWithEmail, getSession } from "@/lib/auth";
 import studentImg from "@/assets/student-illustration.png";
 import adminImg from "@/assets/admin-illustration.png";
 const ADMIN_KEY = "VENDOR-2026";
