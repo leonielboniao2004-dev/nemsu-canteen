@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  Pencil, Camera, Lock, Mail, Bell, Shield, ChevronRight, CreditCard, Plus,
+  Pencil, Camera, Lock, Bell, Shield, ChevronRight, CreditCard, Plus,
   Wallet, CalendarCheck, CheckCircle2, Clock, ArrowRight, HelpCircle, MoreVertical,
   Upload, BadgeCheck, FileImage, X, ShieldCheck, Loader2,
 } from "lucide-react";
