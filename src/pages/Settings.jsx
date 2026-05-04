@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { getSession, updateSession } from "@/lib/auth";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 const Settings = () => {
     const [session, setSession] = useState(() => getSession());
     useEffect(() => {
@@ -48,12 +49,20 @@ const Settings = () => {
             toast.error("Image too large", { description: "Max size is 4 MB." });
             return;
         }
-        const dataUrl = await fileToDataUrl(file);
-        updateSession({ avatarDataUrl: dataUrl });
-        toast.success("Profile photo updated");
+        try {
+            const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
+            const path = `${session.userId}/avatar-${Date.now()}.${ext}`;
+            const { error: upErr } = await supabase.storage.from("avatars").upload(path, file, { upsert: true, contentType: file.type });
+            if (upErr) throw upErr;
+            const { data: { publicUrl } } = supabase.storage.from("avatars").getPublicUrl(path);
+            await updateSession({ avatarDataUrl: publicUrl });
+            toast.success("Profile photo updated");
+        } catch (err) {
+            toast.error("Upload failed", { description: err?.message });
+        }
     };
-    const removeAvatar = () => {
-        updateSession({ avatarDataUrl: undefined });
+    const removeAvatar = async () => {
+        await updateSession({ avatarDataUrl: undefined });
         toast.success("Profile photo removed");
     };
     const [submittingId, setSubmittingId] = useState(false);

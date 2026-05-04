@@ -1,72 +1,122 @@
+import { supabase } from "@/integrations/supabase/client";
+
 const KEY = "canteen.session";
-const PROFILES_KEY = "canteen.profiles";
-const readProfiles = () => {
-    if (typeof window === "undefined")
-        return {};
-    try {
-        const raw = window.localStorage.getItem(PROFILES_KEY);
-        return raw ? JSON.parse(raw) : {};
-    }
-    catch {
-        return {};
-    }
+const EVT = "canteen.session.update";
+
+let _session = null;
+const readCache = () => {
+  if (typeof window === "undefined") return null;
+  try { const raw = localStorage.getItem(KEY); return raw ? JSON.parse(raw) : null; } catch { return null; }
 };
-const writeProfiles = (p) => {
-    if (typeof window !== "undefined")
-        window.localStorage.setItem(PROFILES_KEY, JSON.stringify(p));
+const writeCache = (s) => {
+  if (typeof window === "undefined") return;
+  if (s) localStorage.setItem(KEY, JSON.stringify(s));
+  else localStorage.removeItem(KEY);
+  _session = s;
+  window.dispatchEvent(new CustomEvent(EVT));
 };
-/** Returns saved profile data (avatar, verification, etc.) for an email. */
-export const getProfile = (email, role) => {
-    const all = readProfiles();
-    const key = `${role}:${email.toLowerCase()}`;
-    return all[key] ?? {};
+_session = readCache();
+
+const profileToSession = (p) => {
+  if (!p) return null;
+  if (p.role === "admin") {
+    return { role: "admin", name: p.name || "Vendor", avatarDataUrl: p.avatar_url || undefined, userId: p.id, email: p.email };
+  }
+  return {
+    role: p.role,
+    userId: p.id,
+    email: p.email,
+    name: p.name || "",
+    studentId: p.student_id || "",
+    grade: p.grade || "",
+    section: p.section || "",
+    phone: p.phone || "",
+    avatarDataUrl: p.avatar_url || undefined,
+    verification: {
+      status: p.verification_status || "unverified",
+      idDataUrl: p.verification_id_url || undefined,
+      submittedAt: p.verification_submitted_at || undefined,
+      verifiedAt: p.verification_verified_at || undefined,
+    },
+  };
 };
-const saveProfile = (email, role, data) => {
-    const all = readProfiles();
-    const key = `${role}:${email.toLowerCase()}`;
-    all[key] = { ...all[key], ...data, role };
-    writeProfiles(all);
-};
+
+export const getSession = () => _session;
+
 export const isPortalUser = (s) => !!s && (s.role === "student" || s.role === "teacher");
-export const getSession = () => {
-    if (typeof window === "undefined")
-        return null;
-    try {
-        const raw = window.localStorage.getItem(KEY);
-        return raw ? JSON.parse(raw) : null;
-    }
-    catch {
-        return null;
-    }
+
+export const refreshProfile = async () => {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) { writeCache(null); return null; }
+  const { data: profile } = await supabase.from("profiles").select("*").eq("id", user.id).maybeSingle();
+  const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
+  const isAdmin = (roles || []).some((r) => r.role === "admin");
+  const merged = profile ? { ...profile, role: isAdmin ? "admin" : profile.role } : null;
+  writeCache(profileToSession(merged));
+  return _session;
 };
-export const setSession = (s) => {
-    if (typeof window === "undefined")
-        return;
-    let next = s;
-    // Restore saved profile (avatar, verification, edits) for portal users.
-    if (s.role === "student" || s.role === "teacher") {
-        const saved = getProfile(s.email, s.role);
-        next = { ...s, ...saved, role: s.role, email: s.email };
-        saveProfile(s.email, s.role, next);
-    }
-    window.localStorage.setItem(KEY, JSON.stringify(next));
+
+export const setSession = (s) => writeCache(s); // legacy no-op compat (rarely used now)
+
+export const updateSession = async (patch) => {
+  if (!_session || !_session.userId) return null;
+  const dbPatch = {};
+  if ("name" in patch) dbPatch.name = patch.name;
+  if ("phone" in patch) dbPatch.phone = patch.phone;
+  if ("grade" in patch) dbPatch.grade = patch.grade;
+  if ("section" in patch) dbPatch.section = patch.section;
+  if ("studentId" in patch) dbPatch.student_id = patch.studentId;
+  if ("avatarDataUrl" in patch) dbPatch.avatar_url = patch.avatarDataUrl ?? null;
+  if ("verification" in patch && patch.verification) {
+    dbPatch.verification_status = patch.verification.status;
+    dbPatch.verification_id_url = patch.verification.idDataUrl ?? null;
+    dbPatch.verification_submitted_at = patch.verification.submittedAt ?? null;
+    dbPatch.verification_verified_at = patch.verification.verifiedAt ?? null;
+  }
+  if (Object.keys(dbPatch).length) {
+    await supabase.from("profiles").update(dbPatch).eq("id", _session.userId);
+  }
+  writeCache({ ..._session, ...patch });
+  return _session;
 };
-export const updateSession = (patch) => {
-    const cur = getSession();
-    if (!cur)
-        return null;
-    const next = { ...cur, ...patch };
-    if (typeof window !== "undefined")
-        window.localStorage.setItem(KEY, JSON.stringify(next));
-    if (next.role === "student" || next.role === "teacher") {
-        saveProfile(next.email, next.role, next);
-    }
-    if (typeof window !== "undefined") {
-        window.dispatchEvent(new CustomEvent("canteen.session.update"));
-    }
-    return next;
+
+export const clearSession = async () => {
+  await supabase.auth.signOut();
+  writeCache(null);
 };
-export const clearSession = () => {
-    if (typeof window !== "undefined")
-        window.localStorage.removeItem(KEY);
+
+export const signInWithEmail = async (email, password) => {
+  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error) throw error;
+  await refreshProfile();
+  return _session;
 };
+
+export const signUpWithEmail = async ({ email, password, name, role, studentId, grade, section, phone }) => {
+  const redirect = typeof window !== "undefined" ? window.location.origin : undefined;
+  const { error } = await supabase.auth.signUp({
+    email, password,
+    options: {
+      emailRedirectTo: redirect,
+      data: { name, role, student_id: studentId, grade, section, phone },
+    },
+  });
+  if (error) throw error;
+  await refreshProfile();
+  return _session;
+};
+
+// Listen to auth state changes (init from root component)
+let _initialized = false;
+export const initAuth = () => {
+  if (_initialized || typeof window === "undefined") return;
+  _initialized = true;
+  supabase.auth.onAuthStateChange((_e, session) => {
+    if (!session) writeCache(null);
+    else setTimeout(() => { refreshProfile(); }, 0);
+  });
+  refreshProfile();
+};
+
+// Legacy getProfile shim
+export const getProfile = () => ({});

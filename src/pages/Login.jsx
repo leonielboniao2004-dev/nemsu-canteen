@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
-import { setSession } from "@/lib/auth";
+import { signInWithEmail, getSession } from "@/lib/auth";
 import studentImg from "@/assets/student-illustration.png";
 import adminImg from "@/assets/admin-illustration.png";
 const ADMIN_KEY = "VENDOR-2026";
@@ -36,57 +36,44 @@ const Index = () => {
         if (Object.keys(errs).length)
             return;
         setStudentLoading(true);
-        await new Promise((r) => setTimeout(r, 800));
-        setStudentLoading(false);
-        const namePart = email.split("@")[0] || (portalRole === "teacher" ? "Teacher" : "Student");
-        const niceName = namePart
-            .replace(/[._-]+/g, " ")
-            .replace(/\b\w/g, (c) => c.toUpperCase());
-        if (portalRole === "teacher") {
-            setSession({
-                role: "teacher",
-                email,
-                name: niceName,
-                studentId: "EMP-1042",
-                grade: "Mathematics Dept.",
-                section: "Algebra II",
-                phone: "0917 555 0142",
-            });
-            toast.success("Welcome back!", { description: "Logged in as teacher." });
+        try {
+            const s = await signInWithEmail(email, password);
+            if (s && portalRole && s.role !== portalRole && s.role !== "admin") {
+                toast.error("Wrong portal", { description: `This account is registered as ${s.role}.` });
+                setStudentLoading(false);
+                return;
+            }
+            toast.success("Welcome back!", { description: `Logged in as ${s?.role}.` });
+            navigate("/dashboard");
+        } catch (err) {
+            toast.error("Login failed", { description: err?.message || "Invalid credentials." });
+        } finally {
+            setStudentLoading(false);
         }
-        else {
-            setSession({
-                role: "student",
-                email,
-                name: niceName,
-                studentId: "20231001",
-                grade: "Grade 11",
-                section: "STEM - A",
-                phone: "0917 123 4567",
-            });
-            toast.success("Welcome back!", { description: "Logged in as student." });
-        }
-        navigate("/dashboard");
     };
     const handleAdminLogin = async (e) => {
         e.preventDefault();
         const errs = {};
-        if (!adminKey.trim())
-            errs.adminKey = "Admin key is required.";
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errs.email = "Enter your admin email.";
+        if (adminPassword.length < 6) errs.adminPassword = "Password is required.";
         setErrors(errs);
         if (Object.keys(errs).length)
             return;
         setAdminLoading(true);
-        await new Promise((r) => setTimeout(r, 700));
-        setAdminLoading(false);
-        if (adminKey !== ADMIN_KEY) {
-            setErrors({ adminKey: "Invalid admin key. Access denied." });
-            toast.error("Access denied", { description: "Invalid admin key." });
-            return;
+        try {
+            const s = await signInWithEmail(email, adminPassword);
+            if (s?.role !== "admin") {
+                toast.error("Access denied", { description: "This account is not an admin." });
+                setAdminLoading(false);
+                return;
+            }
+            toast.success("Welcome, Vendor");
+            navigate("/dashboard");
+        } catch (err) {
+            toast.error("Login failed", { description: err?.message || "Invalid credentials." });
+        } finally {
+            setAdminLoading(false);
         }
-        setSession({ role: "admin", name: "Vendor" });
-        toast.success("Welcome, Vendor");
-        navigate("/dashboard");
     };
     const illustration = tab === "student" ? studentImg : adminImg;
     const alt = tab === "student" ? "Student illustration" : "Administrator illustration";
