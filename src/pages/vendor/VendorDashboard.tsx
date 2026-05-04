@@ -127,9 +127,9 @@ const VendorDashboard = () => {
         <div className="bg-card border border-border rounded-2xl p-5">
           <h3 className="font-bold mb-4">Quick Actions</h3>
           <div className="grid grid-cols-2 gap-3">
-            <QuickAction to="/vendor/products" icon={Plus} label="Add Product" desc="Create a menu item" tint="primary" />
+            <QuickAction to="/vendor/products" icon={Plus} label="Manage Products" desc="Add or restock items" tint="primary" />
             <QuickAction to="/admin/orders" icon={ClipboardList} label="View Orders" desc="Manage queue" tint="info" />
-            <QuickAction to="/vendor/products" icon={Boxes} label="Update Stock" desc="Restock items" tint="warning" />
+            <QuickAction to="/vendor/customers" icon={Boxes} label="Customers" desc="View customer list" tint="warning" />
             <QuickAction to="/vendor/reports" icon={FileText} label="Reports" desc="Sales summary" tint="success" />
           </div>
 
