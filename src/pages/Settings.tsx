@@ -125,7 +125,6 @@ const Settings = () => {
 
   const settingsRows = [
     { icon: Lock, title: "Change Password", desc: "Update your password regularly to keep your account secure.", onClick: () => toast.info("Password change coming soon") },
-    { icon: Mail, title: "Email Preferences", desc: "Choose how you want to receive emails from us.", onClick: () => toast.info("Email preferences coming soon") },
     { icon: Bell, title: "Notification Preferences", desc: "Manage your notification settings and preferences.", onClick: () => toast.info("Notification preferences coming soon") },
     { icon: Shield, title: "Privacy Settings", desc: "Manage your privacy and data settings.", onClick: () => toast.info("Privacy settings coming soon") },
   ];
