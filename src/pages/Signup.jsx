@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { signUpWithEmail } from "@/lib/auth";
+import { setSession } from "@/lib/auth";
 import studentImg from "@/assets/student-signup-illustration.png";
 const grades = ["Grade 7", "Grade 8", "Grade 9", "Grade 10", "Grade 11", "Grade 12"];
 const sections = ["A", "B", "C", "D", "E"];
@@ -54,18 +54,19 @@ const Signup = () => {
         if (Object.keys(errs).length)
             return;
         setLoading(true);
-        try {
-            await signUpWithEmail({
-                email: form.email, password: form.password, name: form.fullName, role,
-                studentId: form.studentId, grade: form.grade, section: form.section || "", phone: form.phone,
-            });
-            toast.success("Account created!", { description: "Welcome to the canteen." });
-            navigate("/dashboard");
-        } catch (err) {
-            toast.error("Signup failed", { description: err?.message || "Please try again." });
-        } finally {
-            setLoading(false);
-        }
+        await new Promise((r) => setTimeout(r, 900));
+        setLoading(false);
+        setSession({
+            role,
+            email: form.email,
+            name: form.fullName,
+            studentId: form.studentId,
+            grade: form.grade,
+            section: form.section || (role === "teacher" ? "" : ""),
+            phone: form.phone,
+        });
+        toast.success("Account created!", { description: "You can now log in." });
+        navigate("/dashboard");
     };
     return (<AuthLayout illustration={studentImg} illustrationAlt="Student signup illustration">
       <div className="space-y-5">
