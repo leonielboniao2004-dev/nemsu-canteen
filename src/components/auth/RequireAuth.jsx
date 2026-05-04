@@ -1,7 +1,7 @@
 import { Navigate } from "@/lib/router-compat";
 import { getSession } from "@/lib/auth";
 import * as React from "react";
-export const RequireAuth = ({ children, role, }) => {
+export const RequireAuth = ({ children, role = undefined }) => {
     const session = getSession();
     if (!session)
         return <Navigate to="/" replace/>;
