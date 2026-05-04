@@ -10,7 +10,9 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { getSession } from "@/lib/auth";
 import { useProducts, productsStore } from "@/lib/products";
-import { peso, Category } from "@/lib/menu";
+import { peso, Category, MENU, MenuItem } from "@/lib/menu";
+import { useOrders } from "@/lib/orders";
+import { AppShell } from "@/components/AppShell";
 import VendorDashboard from "@/pages/vendor/VendorDashboard";
 
 const Dashboard = () => {
