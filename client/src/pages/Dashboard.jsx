@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { getSession } from "@/lib/auth";
 import { peso, MENU } from "@/lib/menu";
 import { useOrders } from "@/lib/orders";
+import { useProducts, productsStore } from "@/lib/products";
 import { AppShell } from "@/components/AppShell";
 import VendorDashboard from "@/pages/vendor/VendorDashboard";
 const Dashboard = () => {
@@ -24,24 +25,20 @@ const Dashboard = () => {
 const StudentDashboard = () => {
     const session = getSession();
     const { orders = [] } = useOrders();
+    const { products = [] } = useProducts();
     const [q, setQ] = useState("");
     const [cat, setCat] = useState("All");
     const [status, setStatus] = useState("All");
     const [sort, setSort] = useState("name");
-    // Synthetic "stock" so the layout matches the reference data shape
-    const stocked = useMemo(() => MENU.map((m, i) => ({
-        ...m,
-        sku: `PRD-${String(32 - i).padStart(5, "0")}`,
-        stock: ((i * 7) % 18) + 2,
-    })), []);
+    const stocked = products;
     const totalProducts = stocked.length;
-    const availableItems = stocked.filter((m) => m.stock >= 6).length;
-    const lowStock = stocked.filter((m) => m.stock < 6).length;
+    const availableItems = stocked.filter((m) => m.available && m.stock > 0).length;
+    const lowStock = stocked.filter((m) => productsStore.isLow(m) && m.stock > 0).length;
     const categories = new Set(stocked.map((m) => m.category)).size;
     const filtered = useMemo(() => {
         let list = stocked.filter((m) => (cat === "All" ? true : m.category === cat));
         if (status !== "All")
-            list = list.filter((m) => (status === "Low Stock" ? m.stock < 6 : m.stock >= 6));
+            list = list.filter((m) => (status === "Low Stock" ? productsStore.isLow(m) && m.stock > 0 : m.available && m.stock > 0));
         if (q.trim())
             list = list.filter((m) => (m.name + " " + m.description).toLowerCase().includes(q.toLowerCase()));
         if (sort === "name")
@@ -118,7 +115,7 @@ const StudentDashboard = () => {
           </div>
 
           <div className="p-5 flex flex-wrap items-center justify-between gap-3 border-t border-border">
-            <p className="text-xs text-muted-foreground">Showing 1 to {Math.min(7, filtered.length)} of {filtered.length} products</p>
+            <p className="text-xs text-muted-foreground">Showing {filtered.length === 0 ? 0 : 1} to {Math.min(7, filtered.length)} of {filtered.length} products</p>
             <div className="flex items-center gap-1">
               {["‹", "1", "2", "3", "›"].map((p, i) => (<button key={i} className={`h-8 min-w-8 px-2 rounded-lg border text-sm ${p === "1" ? "bg-primary text-primary-foreground border-primary" : "border-border hover:bg-secondary"}`}>
                   {p}
@@ -200,12 +197,14 @@ const CATEGORY_COLORS = {
     Desserts: "bg-pink-500/10 text-pink-600",
 };
 const ProductRow = ({ p }) => {
-    const low = p.stock < 6;
+    const out = p.stock <= 0;
+    const hidden = !p.available;
+    const low = productsStore.isLow(p) && !out;
     return (<tr className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors">
       <td className="px-5 py-4 text-xs font-medium text-muted-foreground whitespace-nowrap">{p.sku}</td>
       <td className="px-5 py-4">
         <div className="flex items-center gap-3">
-          <div className="h-12 w-12 rounded-xl bg-accent flex items-center justify-center text-2xl shrink-0">{p.emoji}</div>
+          <ProductThumb product={p}/>
           <div className="min-w-0">
             <p className="font-semibold leading-tight">{p.name}</p>
             <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2 max-w-[220px]">{p.description}</p>
@@ -215,14 +214,14 @@ const ProductRow = ({ p }) => {
       <td className="px-5 py-4">
         <Badge className={`${CATEGORY_COLORS[p.category]} hover:${CATEGORY_COLORS[p.category]} border-0 rounded-md font-medium`}>{p.category}</Badge>
       </td>
-      <td className="px-5 py-4 font-semibold whitespace-nowrap">{peso(p.price)}.00</td>
+      <td className="px-5 py-4 font-semibold whitespace-nowrap">{peso(p.price)}</td>
       <td className="px-5 py-4 font-medium">{p.stock}</td>
       <td className="px-5 py-4">
-        {low ? (<Badge className="bg-[hsl(var(--warning))]/15 text-[hsl(var(--warning))] hover:bg-[hsl(var(--warning))]/15 border-0 rounded-md">Low Stock</Badge>) : (<Badge className="bg-[hsl(var(--success))]/15 text-[hsl(var(--success))] hover:bg-[hsl(var(--success))]/15 border-0 rounded-md">Available</Badge>)}
+        {hidden ? (<Badge className="bg-muted text-muted-foreground hover:bg-muted border-0 rounded-md">Hidden</Badge>) : out ? (<Badge className="bg-destructive/10 text-destructive hover:bg-destructive/10 border-0 rounded-md">Out</Badge>) : low ? (<Badge className="bg-[hsl(var(--warning))]/15 text-[hsl(var(--warning))] hover:bg-[hsl(var(--warning))]/15 border-0 rounded-md">Low Stock</Badge>) : (<Badge className="bg-[hsl(var(--success))]/15 text-[hsl(var(--success))] hover:bg-[hsl(var(--success))]/15 border-0 rounded-md">Available</Badge>)}
       </td>
       <td className="px-5 py-4">
         <div className="flex items-center justify-end gap-1.5">
-          <button disabled={low} onClick={() => { cartStore.add(p.id, 1); toast.success("Added to cart", { description: p.name }); }} className="h-8 px-3 rounded-lg bg-primary text-primary-foreground hover:opacity-90 flex items-center gap-1.5 text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed">
+          <button disabled={hidden || out} onClick={() => { cartStore.add(p.id, 1); toast.success("Added to cart", { description: p.name }); }} className="h-8 px-3 rounded-lg bg-primary text-primary-foreground hover:opacity-90 flex items-center gap-1.5 text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed">
             <ShoppingCart className="h-3.5 w-3.5"/> Order
           </button>
           <button className="h-8 w-8 rounded-lg bg-secondary text-muted-foreground hover:text-foreground flex items-center justify-center" aria-label="View"><Eye className="h-3.5 w-3.5"/></button>
@@ -230,6 +229,11 @@ const ProductRow = ({ p }) => {
       </td>
     </tr>);
 };
+const ProductThumb = ({ product }) => product.imageUrl ? (
+    <img src={product.imageUrl} alt="" className="h-12 w-12 rounded-xl object-cover shrink-0 bg-accent"/>
+) : (
+    <div className="h-12 w-12 rounded-xl bg-accent flex items-center justify-center text-2xl shrink-0">{product.emoji}</div>
+);
 const STAT_TINTS = {
     primary: { bg: "bg-primary/10", fg: "text-primary" },
     success: { bg: "bg-[hsl(var(--success))]/15", fg: "text-[hsl(var(--success))]" },

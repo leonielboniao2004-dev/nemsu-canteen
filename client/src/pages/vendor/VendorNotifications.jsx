@@ -22,9 +22,13 @@ const VendorNotifications = () => {
     const unread = items.filter((n) => !n.read).length;
     const alerts = items.filter((n) => n.type === "Alert").length;
     const newOrders = items.filter((n) => n.type === "Pending").length;
-    const markAll = () => {
-        notificationsStore.markAllReadFor("vendor");
-        toast.success("All notifications marked as read");
+    const markAll = async () => {
+        try {
+            await notificationsStore.markAllReadFor();
+            toast.success("All notifications marked as read");
+        } catch {
+            toast.error("Failed to mark notifications as read");
+        }
     };
     return (<VendorShell title="Notifications" subtitle="New orders, low-stock alerts, and announcements.">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">

@@ -2,6 +2,14 @@ import { useState, useEffect } from "react";
 import { Bell, Mail, CheckCircle2, Megaphone, AlertTriangle, Info, ShieldCheck } from "lucide-react";
 import api from "@/api/index";
 
+const NOTIFICATIONS_CHANGED_EVENT = "canteen:notifications-changed";
+
+const notifyNotificationsChanged = () => {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent(NOTIFICATIONS_CHANGED_EVENT));
+  }
+};
+
 export const ICONS = {
   Bell,
   Mail,
@@ -36,17 +44,19 @@ export const notificationsStore = {
   async markRead(id) {
     try {
       await api.patch(`/api/notifications/${id}/read`);
+      notifyNotificationsChanged();
     } catch (err) {
       console.error("Failed to mark notification as read", err);
+      throw err;
     }
   },
-  async markAllReadFor(audience, email) {
+  async markAllReadFor() {
     try {
-      // In a real app, this would be an API call. 
-      // For now, we'll just log it as the API handles specific IDs.
-      console.log(`Marking all read for ${audience} ${email}`);
+      await api.patch("/api/notifications/read-all");
+      notifyNotificationsChanged();
     } catch (err) {
       console.error("Failed to mark all read", err);
+      throw err;
     }
   }
 };
@@ -65,8 +75,12 @@ export const useNotifications = (audience, key) => {
 
   useEffect(() => {
     fetchNotifs();
+    window.addEventListener(NOTIFICATIONS_CHANGED_EVENT, fetchNotifs);
     const interval = setInterval(fetchNotifs, 15000); // Poll every 15s
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener(NOTIFICATIONS_CHANGED_EVENT, fetchNotifs);
+    };
   }, [audience, key]);
 
   return notifications;

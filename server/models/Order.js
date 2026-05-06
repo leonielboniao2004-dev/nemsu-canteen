@@ -5,6 +5,7 @@ const orderLineSchema = new mongoose.Schema(
     productId: { type: mongoose.Schema.Types.ObjectId, ref: "Product" },
     name: String,
     emoji: String,
+    imageUrl: String,
     price: Number,
     qty: { type: Number, min: 1 },
   },

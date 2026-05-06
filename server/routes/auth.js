@@ -1,43 +1,150 @@
 import { Router } from "express";
+import { randomUUID } from "crypto";
 import User from "../models/User.js";
 import { signToken, verifyToken } from "../middleware/auth.js";
 
 const router = Router();
+const offlineUsers = new Map();
 
-// ── POST /api/auth/signup ─────────────────────────────────────────────────────
+function toOfflineSafeUser(user) {
+  const { password, ...safe } = user;
+  return safe;
+}
+
+function ensureOfflineVendor(preferredPassword) {
+  const email = "vendor@canteen.local";
+  let vendor = offlineUsers.get(email);
+
+  if (!vendor) {
+    const now = new Date().toISOString();
+    vendor = {
+      id: "offline-vendor-1",
+      name: "Canteen Vendor",
+      email,
+      password: preferredPassword || "vendor123",
+      role: "vendor",
+      studentId: "",
+      grade: "",
+      section: "",
+      phone: "",
+      avatar: "",
+      idCardImage: "",
+      createdAt: now,
+      updatedAt: now,
+    };
+    offlineUsers.set(email, vendor);
+  }
+
+  return vendor;
+}
+
+function ensureOfflineUserFromToken(payload) {
+  const email = String(payload?.email || "").toLowerCase();
+  if (!email) return null;
+
+  let user = offlineUsers.get(email);
+  if (!user) {
+    const now = new Date().toISOString();
+    user = {
+      id: String(payload.id || randomUUID()),
+      name: payload.name || "User",
+      email,
+      password: "",
+      role: payload.role || "student",
+      studentId: "",
+      grade: "",
+      section: "",
+      phone: "",
+      avatar: "",
+      idCardImage: "",
+      createdAt: now,
+      updatedAt: now,
+    };
+    offlineUsers.set(email, user);
+  }
+
+  return user;
+}
+
 router.post("/signup", async (req, res) => {
   try {
     const { name, email, password, role = "student", studentId, grade, section, phone } = req.body;
+    const normalizedEmail = String(email || "").toLowerCase();
 
     if (!name || !email || !password) {
       return res.status(400).json({ error: "Name, email and password are required." });
     }
 
-    const exists = await User.findOne({ email: email.toLowerCase() });
+    if (req.dbUnavailable) {
+      if (offlineUsers.has(normalizedEmail)) {
+        return res.status(409).json({ error: "An account with that email already exists." });
+      }
+
+      const now = new Date().toISOString();
+      const user = {
+        id: randomUUID(),
+        name,
+        email: normalizedEmail,
+        password,
+        role,
+        studentId: studentId || "",
+        grade: grade || "",
+        section: section || "",
+        phone: phone || "",
+        avatar: "",
+        idCardImage: "",
+        createdAt: now,
+        updatedAt: now,
+      };
+      offlineUsers.set(user.email, user);
+
+      const token = signToken({
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        name: user.name,
+      });
+      return res.status(201).json({ token, user: toOfflineSafeUser(user) });
+    }
+
+    const exists = await User.findOne({ email: normalizedEmail });
     if (exists) {
       return res.status(409).json({ error: "An account with that email already exists." });
     }
 
     const user = await User.create({ name, email, password, role, studentId, grade, section, phone });
     const token = signToken({ id: user._id, email: user.email, role: user.role, name: user.name });
-
-    res.status(201).json({ token, user: user.toSafeObject() });
+    return res.status(201).json({ token, user: user.toSafeObject() });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: err.message });
   }
 });
 
-// ── POST /api/auth/login ──────────────────────────────────────────────────────
 router.post("/login", async (req, res) => {
   try {
     const { email, password, role } = req.body;
+    const normalizedEmail = String(email || "").toLowerCase();
 
     if (!email || !password) {
       return res.status(400).json({ error: "Email and password are required." });
     }
 
-    // Build query — optionally filter by role (vendor login is separate)
-    const query = { email: email.toLowerCase() };
+    if (req.dbUnavailable) {
+      const user = offlineUsers.get(normalizedEmail);
+      if (!user || user.password !== password || (role && user.role !== role)) {
+        return res.status(401).json({ error: "Invalid email or password." });
+      }
+
+      const token = signToken({
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        name: user.name,
+      });
+      return res.json({ token, user: toOfflineSafeUser(user) });
+    }
+
+    const query = { email: normalizedEmail };
     if (role) query.role = role;
 
     const user = await User.findOne(query);
@@ -51,14 +158,12 @@ router.post("/login", async (req, res) => {
     }
 
     const token = signToken({ id: user._id, email: user.email, role: user.role, name: user.name });
-    res.json({ token, user: user.toSafeObject() });
+    return res.json({ token, user: user.toSafeObject() });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: err.message });
   }
 });
 
-// ── POST /api/auth/vendor-login ───────────────────────────────────────────────
-// Vendor logs in with a special vendor key + password
 router.post("/vendor-login", async (req, res) => {
   try {
     const { vendorKey, password } = req.body;
@@ -68,7 +173,21 @@ router.post("/vendor-login", async (req, res) => {
       return res.status(401).json({ error: "Invalid vendor key. Access denied." });
     }
 
-    // Find (or auto-create) the single vendor account
+    if (req.dbUnavailable) {
+      const vendor = ensureOfflineVendor(password);
+      if (password && vendor.password !== password) {
+        return res.status(401).json({ error: "Incorrect vendor password." });
+      }
+
+      const token = signToken({
+        id: vendor.id,
+        email: vendor.email,
+        role: vendor.role,
+        name: vendor.name,
+      });
+      return res.json({ token, user: toOfflineSafeUser(vendor) });
+    }
+
     let vendor = await User.findOne({ role: "vendor" });
     if (!vendor) {
       vendor = await User.create({
@@ -83,24 +202,27 @@ router.post("/vendor-login", async (req, res) => {
     }
 
     const token = signToken({ id: vendor._id, email: vendor.email, role: vendor.role, name: vendor.name });
-    res.json({ token, user: vendor.toSafeObject() });
+    return res.json({ token, user: vendor.toSafeObject() });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: err.message });
   }
 });
 
-// ── GET /api/auth/me ──────────────────────────────────────────────────────────
 router.get("/me", verifyToken, async (req, res) => {
   try {
+    if (req.dbUnavailable) {
+      const user = ensureOfflineUserFromToken(req.user);
+      return res.json(toOfflineSafeUser(user));
+    }
+
     const user = await User.findById(req.user.id).select("-password");
     if (!user) return res.status(404).json({ error: "User not found." });
-    res.json(user);
+    return res.json(user);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: err.message });
   }
 });
 
-// ── PATCH /api/auth/me ────────────────────────────────────────────────────────
 router.patch("/me", verifyToken, async (req, res) => {
   try {
     const allowed = ["name", "phone", "grade", "section", "studentId", "avatar", "idCardImage", "password"];
@@ -109,14 +231,21 @@ router.patch("/me", verifyToken, async (req, res) => {
       if (req.body[key] !== undefined) updates[key] = req.body[key];
     }
 
+    if (req.dbUnavailable) {
+      const user = ensureOfflineUserFromToken(req.user);
+      Object.assign(user, updates);
+      user.updatedAt = new Date().toISOString();
+      return res.json(toOfflineSafeUser(user));
+    }
+
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ error: "User not found." });
 
     Object.assign(user, updates);
-    await user.save(); // triggers pre-save hash if password changed
-    res.json(user.toSafeObject());
+    await user.save();
+    return res.json(user.toSafeObject());
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: err.message });
   }
 });
 

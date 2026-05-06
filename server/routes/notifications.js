@@ -53,10 +53,15 @@ router.patch("/read-all", async (req, res) => {
     const filter =
       req.user.role === "vendor"
         ? { audience: "vendor" }
-        : { audience: "customer", audienceKey: req.user.email };
+        : {
+            $or: [
+              { audience: "customer", audienceKey: req.user.email },
+              { audience: "customer", audienceKey: null },
+            ],
+          };
 
-    await Notification.updateMany(filter, { read: true });
-    res.json({ message: "All marked as read." });
+    const result = await Notification.updateMany(filter, { read: true });
+    res.json({ message: "All marked as read.", modifiedCount: result.modifiedCount });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

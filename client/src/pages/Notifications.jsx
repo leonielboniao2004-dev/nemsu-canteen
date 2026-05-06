@@ -42,11 +42,21 @@ const Notifications = () => {
         { label: "Info", count: info, color: "bg-[hsl(var(--success))]" },
         { label: "System", count: system, color: "bg-muted-foreground" },
     ];
-    const markAllRead = () => {
-        notificationsStore.markAllReadFor("customer", email);
-        toast.success("All notifications marked as read");
+    const markAllRead = async () => {
+        try {
+            await notificationsStore.markAllReadFor();
+            toast.success("All notifications marked as read");
+        } catch {
+            toast.error("Failed to mark notifications as read");
+        }
     };
-    const markRead = (id) => notificationsStore.markRead(id);
+    const markRead = async (id) => {
+        try {
+            await notificationsStore.markRead(id);
+        } catch {
+            toast.error("Failed to mark notification as read");
+        }
+    };
     return (<StudentSidebarLayout title="Notifications" subtitle="Stay updated with important alerts and announcements.">
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4 mb-6">
         <NStat icon={<Bell className="h-5 w-5"/>} tint="primary" label="Total" value={String(total)}/>

@@ -11,7 +11,7 @@ export const NotificationsBell = () => {
     const items = useNotifications(audience, key);
     const [open, setOpen] = useState(false);
     const unread = items.filter((n) => !n.read).length;
-    const markAll = () => notificationsStore.markAllReadFor(audience, key);
+    const markAll = () => notificationsStore.markAllReadFor();
     const markOne = (id) => notificationsStore.markRead(id);
     return (<Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
