@@ -1,7 +1,7 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-import { fileURLToPath } from "url";
+import { fileURLToPath, pathToFileURL } from "url";
 import path from "path";
 import mongoose from "mongoose";
 
@@ -17,6 +17,7 @@ dotenv.config({ path: path.resolve(__dirname, "../.env") });
 const app = express();
 const PORT = process.env.PORT || 5000;
 const MONGO_URI = process.env.MONGODB_URI;
+const clientDistPath = path.resolve(__dirname, "../client/dist");
 
 let dbConnectionPromise = null;
 let nextDbRetryAt = 0;
@@ -92,17 +93,35 @@ app.use("/api/orders", orderRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/upload", uploadRoutes);
 
+if (process.env.NODE_ENV === "production") {
+  app.use(express.static(clientDistPath));
+  app.get("*", (req, res, next) => {
+    if (req.path.startsWith("/api/")) return next();
+
+    res.sendFile(path.join(clientDistPath, "index.html"), (err) => {
+      if (err) next(err);
+    });
+  });
+}
+
 app.use((_req, res) => res.status(404).json({ error: "Route not found" }));
 
 app.use((err, _req, res, _next) => {
   console.error("[server error]", err);
+  const status = err.status ?? (err.code === "LIMIT_FILE_SIZE" ? 413 : 500);
   res
-    .status(err.status ?? 500)
+    .status(status)
     .json({ error: err.message ?? "Internal server error" });
 });
 
-if (process.env.NODE_ENV !== "production") {
-  app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
+const isMainModule =
+  process.argv[1] &&
+  pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url;
+
+if (isMainModule) {
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`Server running on http://0.0.0.0:${PORT}`);
+  });
 }
 
 export default app;

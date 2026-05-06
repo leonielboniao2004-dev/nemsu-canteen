@@ -1,70 +1,110 @@
 import { Router } from "express";
 import { v2 as cloudinary } from "cloudinary";
-import { CloudinaryStorage } from "multer-storage-cloudinary";
 import multer from "multer";
 import { verifyToken } from "../middleware/auth.js";
 import User from "../models/User.js";
 
 const router = Router();
+const PROFILE_UPLOAD_FOLDER = "canteen_profiles";
+const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
 
-// Configure Cloudinary lazily to ensure environment variables are loaded
+function httpError(message, status) {
+  const error = new Error(message);
+  error.status = status;
+  return error;
+}
+
 function configureCloudinary() {
+  const { CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET } =
+    process.env;
+
+  if (!CLOUDINARY_CLOUD_NAME || !CLOUDINARY_API_KEY || !CLOUDINARY_API_SECRET) {
+    throw httpError("Cloudinary environment variables are not configured.", 503);
+  }
+
   cloudinary.config({
-    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-    api_key: process.env.CLOUDINARY_API_KEY,
-    api_secret: process.env.CLOUDINARY_API_SECRET,
+    cloud_name: CLOUDINARY_CLOUD_NAME,
+    api_key: CLOUDINARY_API_KEY,
+    api_secret: CLOUDINARY_API_SECRET,
+    secure: true,
   });
 }
 
-// Setup Multer Storage
-const storage = new CloudinaryStorage({
-  cloudinary: cloudinary,
-  params: {
-    folder: "canteen_profiles",
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_IMAGE_SIZE_BYTES },
+  fileFilter: (_req, file, cb) => {
+    if (!file.mimetype?.startsWith("image/")) {
+      return cb(httpError("Only image uploads are allowed.", 400));
+    }
+
+    cb(null, true);
   },
 });
 
-const upload = multer({ storage });
+function uploadImageToCloudinary(fileBuffer) {
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      {
+        folder: PROFILE_UPLOAD_FOLDER,
+        resource_type: "image",
+      },
+      (err, result) => {
+        if (err) return reject(err);
+        if (!result?.secure_url) {
+          return reject(new Error("Cloudinary upload failed."));
+        }
+        resolve(result);
+      }
+    );
 
-// ── POST /api/upload/avatar ───────────────────────────────────────────────────
-router.post("/avatar", verifyToken, (req, res, next) => {
-  configureCloudinary();
-  next();
-}, upload.single("image"), async (req, res) => {
+    stream.end(fileBuffer);
+  });
+}
+
+function requireCloudinary(_req, _res, next) {
   try {
-    if (!req.file) return res.status(400).json({ error: "No image file provided." });
-
-    const user = await User.findById(req.user.id);
-    if (!user) return res.status(404).json({ error: "User not found." });
-
-    user.avatar = req.file.path; // Cloudinary URL
-    await user.save();
-
-    res.json({ url: req.file.path, user: user.toSafeObject() });
+    configureCloudinary();
+    next();
   } catch (err) {
-    console.error("[upload error]", err);
-    res.status(500).json({ error: err.message });
+    next(err);
+  }
+}
+
+async function updateUserImage(req, res, imageField) {
+  if (!req.file?.buffer) {
+    return res.status(400).json({ error: "No image file provided." });
+  }
+
+  const user = await User.findById(req.user.id);
+  if (!user) return res.status(404).json({ error: "User not found." });
+
+  const result = await uploadImageToCloudinary(req.file.buffer);
+  user[imageField] = result.secure_url;
+  await user.save();
+
+  return res.json({ url: result.secure_url, user: user.toSafeObject() });
+}
+
+const imageUploadMiddleware = [
+  verifyToken,
+  requireCloudinary,
+  upload.single("image"),
+];
+
+router.post("/avatar", imageUploadMiddleware, async (req, res, next) => {
+  try {
+    await updateUserImage(req, res, "avatar");
+  } catch (err) {
+    next(err);
   }
 });
 
-// ── POST /api/upload/id-card ──────────────────────────────────────────────────
-router.post("/id-card", verifyToken, (req, res, next) => {
-  configureCloudinary();
-  next();
-}, upload.single("image"), async (req, res) => {
+router.post("/id-card", imageUploadMiddleware, async (req, res, next) => {
   try {
-    if (!req.file) return res.status(400).json({ error: "No image file provided." });
-
-    const user = await User.findById(req.user.id);
-    if (!user) return res.status(404).json({ error: "User not found." });
-
-    user.idCardImage = req.file.path; // Cloudinary URL
-    await user.save();
-
-    res.json({ url: req.file.path, user: user.toSafeObject() });
+    await updateUserImage(req, res, "idCardImage");
   } catch (err) {
-    console.error("[upload error]", err);
-    res.status(500).json({ error: err.message });
+    next(err);
   }
 });
 
