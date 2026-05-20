@@ -1,11 +1,11 @@
 services:
   - type: web
-    name: file-polisher
+    name: nemsu-canteen-backend
     runtime: node
     plan: free
     region: singapore
-    buildCommand: npm ci && npm --prefix client ci && npm --prefix server ci && npm run build
-    startCommand: npm start
+    buildCommand: npm --prefix server ci
+    startCommand: npm --prefix server start
     healthCheckPath: /api/health
     autoDeploy: true
     envVars:
